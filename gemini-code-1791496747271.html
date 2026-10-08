@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schatzsuche: Wetter und Verkehr</title>
+    <!-- External Dependencies: Tailwind CSS and Google Fonts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Quicksand', sans-serif;
+            background-color: #f0fdf4;
+            overscroll-behavior: none;
+        }
+        .title-font {
+            font-family: 'Fredoka One', cursive;
+        }
+        .grid-tile {
+            transition: all 0.2s ease;
+            perspective: 1000px;
+        }
+        .grid-tile:not(.revealed):hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+        .treasure-reveal {
+            animation: bounce 0.5s ease-out;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .active-player {
+            ring: 4px solid #16a34a;
+            transform: scale(1.05);
+        }
+        .timer-low {
+            color: #ef4444;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .mic-highlight {
+            animation: pulse-ring 1.5s infinite;
+        }
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4">
+
+    <div id="app" class="max-w-7xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden border-4 border-green-200">
+        <!-- Header Section -->
+        <header class="bg-green-600 p-4 md:p-6 text-white flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="text-center md:text-left">
+                <h1 class="text-3xl md:text-4xl title-font mb-1">💎 Schatzsuche: Wetter & Verkehr 💎</h1>
+                <p class="text-green-100 italic text-sm md:text-base">Ordne die Bausteine, sprich den Satz, grabe nach Schätzen!</p>
+            </div>
+            <div id="timer-display" class="bg-green-800 px-6 py-2 rounded-2xl text-2xl font-bold border-2 border-green-400 min-w-[120px] text-center shadow-inner">
+                05:00
+            </div>
+        </header>
+
+        <!-- Initial Setup Screen -->
+        <div id="setup-screen" class="p-10 text-center">
+            <h2 class="text-2xl font-bold mb-6 text-slate-700">Wie viele Abenteurer seid ihr?</h2>
+            <div class="flex justify-center gap-6">
+                <button onclick="startGame(2)" class="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-2xl text-xl font-bold shadow-lg transition-transform active:scale-95">2 Spieler</button>
+                <button onclick="startGame(3)" class="bg-purple-500 hover:bg-purple-600 text-white px-8 py-4 rounded-2xl text-xl font-bold shadow-lg transition-transform active:scale-95">3 Spieler</button>
+            </div>
+        </div>
+
+        <!-- Main Game Interface -->
+        <div id="game-screen" class="hidden flex flex-col lg:flex-row">
+            
+            <!-- Left Panel: Control & Tasks -->
+            <div class="w-full lg:w-5/12 p-6 bg-slate-50 border-r-2 border-slate-100 flex flex-col">
+                <div id="player-board" class="grid grid-cols-2 lg:grid-cols-1 gap-3 mb-6">
+                    <!-- Player status cards injected here -->
+                </div>
+
+                <div id="turn-info" class="bg-white p-5 rounded-xl border-2 border-slate-200 shadow-sm mb-4">
+                    <p class="text-slate-500 text-xs uppercase tracking-wider font-bold mb-1 text-blue-600">Aufgabe (Englisch)</p>
+                    <p id="english-sentence" class="text-lg font-bold text-slate-800 leading-tight mb-3"></p>
+                    
+                    <p class="text-slate-500 text-xs uppercase tracking-wider font-bold mb-1 text-amber-600">Wortbausteine (Jumbled Chunks)</p>
+                    <div id="jumbled-chunks" class="bg-amber-50 p-3 rounded-lg border border-amber-200 text-slate-700 font-semibold text-sm tracking-wide"></div>
+                </div>
+
+                <div id="input-section" class="space-y-4">
+                    <div class="relative">
+                        <div id="input-lock-overlay" class="absolute inset-0 z-10 bg-slate-100/80 flex items-center justify-center rounded-xl font-bold text-slate-500 text-center px-4 italic border-2 border-dashed border-slate-300">
+                            🎤 Bitte klicke zuerst auf das Mikrofon und sprich den Satz...
+                        </div>
+                        <textarea id="answer-input" placeholder="Warte auf Spracheingabe..." disabled
+                               class="w-full p-4 border-2 border-slate-200 rounded-xl focus:border-green-500 outline-none transition-all text-xl bg-slate-50 min-h-[100px] resize-none overflow-y-auto font-medium"
+                        ></textarea>
+                    </div>
+                    
+                    <div class="flex gap-3">
+                        <button id="submit-btn" onclick="checkAnswer()" disabled
+                                class="flex-1 bg-green-500 hover:bg-green-600 text-white font-black py-4 rounded-xl shadow-md transition-all disabled:opacity-50 text-lg">
+                            PRÜFEN
+                        </button>
+                        <button id="mic-btn" onclick="startSpeech()" 
+                                class="w-20 bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-md flex items-center justify-center text-3xl transition-all mic-highlight">
+                            🎤
+                        </button>
+                    </div>
+                    <p id="speech-status" class="text-sm text-center text-slate-500 h-5 font-bold italic"></p>
+                </div>
+                
+                <div id="feedback-area" class="mt-4 p-4 rounded-xl flex-grow flex flex-col items-center justify-center text-center bg-white border-2 border-slate-100 shadow-inner min-h-[140px]">
+                </div>
+
+                <button id="continue-btn" onclick="nextTurn()" 
+                        class="hidden mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-xl shadow-lg transition-all animate-pulse text-xl">
+                    Weiter ➔
+                </button>
+            </div>
+
+            <!-- Right Panel: The Digging Grid -->
+            <div class="w-full lg:w-7/12 p-6 bg-white overflow-hidden flex flex-col">
+                <div class="mb-4 flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <h3 id="grid-status-text" class="text-lg font-bold text-slate-700 flex items-center gap-2">
+                        <span class="text-2xl">📍</span> Warte auf Stimme...
+                    </h3>
+                    <span id="dig-count" class="bg-amber-100 text-amber-700 px-4 py-1.5 rounded-full text-base font-bold shadow-sm"></span>
+                </div>
+                <div id="treasure-grid" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 overflow-y-auto max-h-[650px] p-2 bg-slate-50 rounded-xl border-2 border-slate-100">
+                </div>
+            </div>
+        </div>
+
+        <!-- End Game Ranking Screen -->
+        <div id="finish-screen" class="hidden p-10 text-center">
+            <h2 class="text-5xl title-font mb-6 text-green-600">Spiel Beendet!</h2>
+            <div id="final-ranking" class="max-w-xl mx-auto mb-10 space-y-4"></div>
+            <button onclick="location.reload()" class="bg-green-600 text-white px-10 py-5 rounded-2xl text-2xl title-font hover:bg-green-700 transition-colors shadow-xl">Nochmal spielen</button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 50 Weather, Travel, and Transport Sentences with Jumbled Chunks
+         */
+        const sentencePairs = [
+            { de: "Wenn es regnet, fahre ich mit dem Bus zur Schule.", en: "If it rains, I go to school by bus.", jumbled: "mit dem Bus / regnet / ich / Wenn / zur Schule / fahre / es" },
+            { de: "Wenn die Sonne scheint, gehen wir zu Fuß in die Stadt.", en: "If the sun shines, we walk into town.", jumbled: "wir / in die Stadt / scheint / gehen / Wenn / zu Fuß / die Sonne" },
+            { de: "Wenn es schneit, fahren die Züge langsamer.", en: "If it snows, the trains travel more slowly.", jumbled: "die Züge / es / langsamer / Wenn / fahren / schneit" },
+            { de: "Wenn es windig ist, nehme ich den Bus.", en: "If it is windy, I take the bus.", jumbled: "den Bus / ist / ich / Wenn / nehme / es windig" },
+            { de: "Wenn das Wetter schön ist, fahren wir mit dem Fahrrad zum See.", en: "If the weather is nice, we cycle to the lake.", jumbled: "zum See / wir / das Wetter / fahren / Wenn / mit dem Fahrrad / schön ist" },
+            { de: "Wenn es neblig ist, fährt mein Vater vorsichtig.", en: "If it is foggy, my father drives carefully.", jumbled: "mein Vater / neblig ist / vorsichtig / Wenn / fährt / es" },
+            { de: "Wenn es stark regnet, bleiben wir am Bahnhof.", en: "If it rains heavily, we stay at the station.", jumbled: "wir / stark / am Bahnhof / Wenn / bleiben / es / regnet" },
+            { de: "Wenn der Bus Verspätung hat, warte ich an der Haltestelle.", en: "If the bus is delayed, I wait at the bus stop.", jumbled: "an der Haltestelle / ich / Verspätung hat / Wenn / warte / der Bus" },
+            { de: "Wenn es frostig ist, fahre ich nicht mit dem Fahrrad.", en: "If it is frosty, I do not cycle.", jumbled: "nicht / ich / frostig ist / mit dem Fahrrad / Wenn / fahre / es" },
+            { de: "Wenn die Straßen trocken sind, fahren wir mit dem Auto.", en: "If the roads are dry, we go by car.", jumbled: "wir / die Straßen / mit dem Auto / Wenn / fahren / trocken sind" },
+            { de: "Wenn es ein Gewitter gibt, bleiben die Flugzeuge am Boden.", en: "If there is a thunderstorm, the planes stay on the ground.", jumbled: "am Boden / es / bleiben / Wenn / die Flugzeuge / ein Gewitter gibt" },
+            { de: "Wenn es sonnig ist, reisen wir ans Meer.", en: "If it is sunny, we travel to the seaside.", jumbled: "ans Meer / wir / es / Wenn / reisen / sonnig ist" },
+            { de: "Wenn der Zug ausfällt, nehmen wir den Bus.", en: "If the train is cancelled, we take the bus.", jumbled: "wir / ausfällt / den Bus / Wenn / nehmen / der Zug" },
+            { de: "Wenn es kalt wird, ziehe ich meinen Mantel an.", en: "If it gets cold, I put on my coat.", jumbled: "meinen Mantel / wird / ich / Wenn / ziehe / es kalt / an" },
+            { de: "Wenn es im Herbst regnet, trage ich einen Regenmantel.", en: "If it rains in autumn, I wear a raincoat.", jumbled: "ich / einen Regenmantel / im Herbst / Wenn / trage / es / regnet" },
+            { de: "Wenn der Verkehr stark ist, kommt der Bus zu spät.", en: "If the traffic is heavy, the bus arrives late.", jumbled: "der Bus / stark ist / zu spät / Wenn / kommt / der Verkehr" },
+            { de: "Wenn es hagelt, warten wir im Auto.", en: "If it hails, we wait in the car.", jumbled: "wir / hagelt / im Auto / Wenn / warten / es" },
+            { de: "Wenn die Temperatur hoch ist, fahre ich mit dem Fahrrad zur Schule.", en: "If the temperature is high, I cycle to school.", jumbled: "zur Schule / die Temperatur / ich / Wenn / mit dem Fahrrad / fahre / hoch ist" },
+            { de: "Wenn es bewölkt ist, machen wir trotzdem einen Ausflug.", en: "If it is cloudy, we still go on an outing.", jumbled: "einen Ausflug / wir / ist / Wenn / machen / bewölkt / es / trotzdem" },
+            { de: "Wenn am Flughafen viel los ist, müssen wir lange warten.", en: "If the airport is busy, we have to wait a long time.", jumbled: "lange / viel los ist / wir / Wenn / am Flughafen / warten / müssen" },
+            { de: "Wenn die Sonne im Sommer scheint, fahren wir mit dem Zug ans Meer.", en: "If the sun shines in summer, we travel to the seaside by train.", jumbled: "mit dem Zug / wir / im Sommer / Wenn / ans Meer / fahren / die Sonne / scheint" },
+            { de: "Wenn es im Winter schneit, nehme ich den Bus zur Arbeit.", en: "If it snows in winter, I take the bus to work.", jumbled: "den Bus / ich / im Winter / Wenn / zur Arbeit / nehme / es / schneit" },
+            { de: "Wenn wir im Stau stehen, hören wir im Auto Musik.", en: "If we are stuck in traffic, we listen to music in the car.", jumbled: "Musik / wir / im Stau / Wenn / im Auto / hören / wir / stehen" },
+            { de: "Wenn ich in Berlin umsteigen muss, suche ich den richtigen Bahnsteig.", en: "If I have to change trains in Berlin, I look for the correct platform.", jumbled: "den richtigen Bahnsteig / ich / in Berlin / Wenn / suche / ich / umsteigen muss" },
+            { de: "Wenn es am Morgen neblig ist, fahren die Busse besonders langsam.", en: "If it is foggy in the morning, the buses travel particularly slowly.", jumbled: "besonders langsam / es / die Busse / Wenn / am Morgen / fahren / neblig ist" },
+            { de: "Wenn es morgen regnet, werde ich mit dem Bus fahren.", en: "If it rains tomorrow, I will travel by bus.", jumbled: "fahren / ich / morgen / Wenn / mit dem Bus / werde / es / regnet" },
+            { de: "Wenn die Sonne scheint, werden wir an den Strand gehen.", en: "If the sun shines, we will go to the beach.", jumbled: "an den Strand / wir / scheint / Wenn / gehen / werden / die Sonne" },
+            { de: "Wenn es am Wochenende schneit, werden wir zu Hause bleiben.", en: "If it snows at the weekend, we will stay at home.", jumbled: "bleiben / wir / am Wochenende / Wenn / werden / zu Hause / es / schneit" },
+            { de: "Wenn es windig wird, werde ich den Zug nehmen.", en: "If it gets windy, I will take the train.", jumbled: "den Zug / ich / wird / Wenn / nehmen / werde / es windig" },
+            { de: "Wenn das Wetter trocken bleibt, werden wir mit dem Fahrrad fahren.", en: "If the weather stays dry, we will cycle.", jumbled: "mit dem Fahrrad / wir / trocken bleibt / Wenn / fahren / werden / das Wetter" },
+            { de: "Wenn es morgen neblig ist, wird mein Vater langsam fahren.", en: "If it is foggy tomorrow, my father will drive slowly.", jumbled: "langsam / mein Vater / neblig ist / Wenn / fahren / wird / es morgen" },
+            { de: "Wenn es stark regnet, werden wir ein Taxi nehmen.", en: "If it rains heavily, we will take a taxi.", jumbled: "ein Taxi / wir / stark / Wenn / nehmen / werden / es / regnet" },
+            { de: "Wenn der Bus zu spät kommt, werde ich zu Fuß gehen.", en: "If the bus arrives late, I will walk.", jumbled: "zu Fuß / ich / zu spät kommt / Wenn / gehen / werde / der Bus" },
+            { de: "Wenn es im Winter friert, werden die Straßen glatt sein.", en: "If it freezes in winter, the roads will be slippery.", jumbled: "glatt / die Straßen / im Winter / Wenn / sein / werden / es / friert" },
+            { de: "Wenn es am Samstag sonnig ist, werden wir einen Ausflug machen.", en: "If it is sunny on Saturday, we will go on an outing.", jumbled: "einen Ausflug / wir / am Samstag / Wenn / machen / werden / es / sonnig ist" },
+            { de: "Wenn es ein Gewitter gibt, werden die Flugzeuge später starten.", en: "If there is a thunderstorm, the planes will take off later.", jumbled: "später / die Flugzeuge / ein Gewitter gibt / Wenn / starten / werden / es" },
+            { de: "Wenn die Temperatur steigt, werden wir zum See fahren.", en: "If the temperature rises, we will go to the lake.", jumbled: "zum See / wir / steigt / Wenn / fahren / werden / die Temperatur" },
+            { de: "Wenn es morgen schneit, werde ich meine Winterjacke tragen.", en: "If it snows tomorrow, I will wear my winter jacket.", jumbled: "meine Winterjacke / ich / morgen / Wenn / tragen / werde / es / schneit" },
+            { de: "Wenn das Wetter wechselhaft ist, werden wir unsere Regenmäntel mitnehmen.", en: "If the weather is changeable, we will take our raincoats.", jumbled: "unsere Regenmäntel / wir / wechselhaft ist / Wenn / mitnehmen / werden / das Wetter" },
+            { de: "Wenn der Zug pünktlich ist, werden wir um acht Uhr ankommen.", en: "If the train is on time, we will arrive at eight o'clock.", jumbled: "um acht Uhr / wir / pünktlich ist / Wenn / ankommen / werden / der Zug" },
+            { de: "Wenn es am Sonntag sonnig ist, werden wir mit dem Fahrrad in den Park fahren.", en: "If it is sunny on Sunday, we will cycle to the park.", jumbled: "in den Park / wir / am Sonntag / Wenn / mit dem Fahrrad / fahren / werden / es / sonnig ist" },
+            { de: "Wenn es morgen regnet, wird meine Mutter uns mit dem Auto abholen.", en: "If it rains tomorrow, my mother will collect us by car.", jumbled: "uns / meine Mutter / morgen / Wenn / mit dem Auto / abholen / wird / es / regnet" },
+            { de: "Wenn es auf der Autobahn einen Stau gibt, werden wir eine andere Strecke nehmen.", en: "If there is a traffic jam on the motorway, we will take another route.", jumbled: "eine andere Strecke / wir / auf der Autobahn / Wenn / nehmen / werden / es / einen Stau gibt" },
+            { de: "Wenn es im Frühling wärmer wird, werden mehr Leute mit dem Fahrrad fahren.", en: "If it gets warmer in spring, more people will cycle.", jumbled: "mehr Leute / im Frühling / Wenn / mit dem Fahrrad / fahren / werden / es / wärmer wird" },
+            { de: "Wenn der Himmel bedeckt ist, werden wir trotzdem zum Flughafen fahren.", en: "If the sky is overcast, we will still travel to the airport.", jumbled: "zum Flughafen / wir / bedeckt ist / Wenn / fahren / werden / der Himmel / trotzdem" },
+            { de: "Wenn der Regen aufhört, werden wir zu Fuß zum Bahnhof gehen.", en: "If the rain stops, we will walk to the station.", jumbled: "zum Bahnhof / wir / aufhört / Wenn / zu Fuß / gehen / werden / der Regen" },
+            { de: "Wenn wir den Zug verpassen, werden wir die nächste Verbindung nehmen.", en: "If we miss the train, we will take the next connection.", jumbled: "die nächste Verbindung / wir / den Zug / Wenn / nehmen / werden / wir / verpassen" },
+            { de: "Wenn es in den Bergen stark schneit, werden wir mit dem Bus ins Skigebiet fahren.", en: "If it snows heavily in the mountains, we will travel to the ski resort by bus.", jumbled: "ins Skigebiet / wir / in den Bergen / Wenn / mit dem Bus / fahren / werden / es / stark schneit" },
+            { de: "Wenn die Wettervorhersage gut ist, werden wir am Wochenende eine Radtour machen.", en: "If the weather forecast is good, we will go for a bike ride at the weekend.", jumbled: "eine Radtour / wir / gut ist / Wenn / am Wochenende / machen / werden / die Wettervorhersage" },
+            { de: "Wenn es am Flughafen wegen des Wetters Verspätungen gibt, werden wir länger auf unseren Flug warten.", en: "If there are delays at the airport because of the weather, we will wait longer for our flight.", jumbled: "auf unseren Flug / wir / wegen des Wetters / Wenn / länger / warten / werden / es / am Flughafen / Verspätungen gibt" }
+        ];
+
+        const playerColours = ['blue', 'purple', 'amber'];
+        const playerNames = ['Blaues Team', 'Lila Team', 'Gold Team'];
+
+        let players = [];
+        let currentPlayerIndex = 0;
+        let currentPair = null;
+        let canDig = false;
+        let gridData = [];
+        const gridSize = 64; 
+        let timeLeft = 300; 
+        let timerInterval = null;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isRecognitionActive = false;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'de-DE';
+            recognition.interimResults = false;
+            
+            recognition.onstart = () => {
+                isRecognitionActive = true;
+                document.getElementById('mic-btn').classList.add('animate-pulse');
+                document.getElementById('speech-status').innerText = "Ich höre zu...";
+            };
+
+            recognition.onresult = (event) => {
+                const speechResult = event.results[0][0].transcript;
+                const input = document.getElementById('answer-input');
+                input.value = speechResult;
+                document.getElementById('speech-status').innerText = "Erkannt! Jetzt korrigieren oder prüfen.";
+                unlockInput();
+            };
+            
+            recognition.onerror = () => {
+                isRecognitionActive = false;
+                document.getElementById('mic-btn').classList.remove('animate-pulse');
+                document.getElementById('speech-status').innerText = "Fehler. Du kannst jetzt tippen.";
+                unlockInput(); 
+            };
+            
+            recognition.onend = () => {
+                isRecognitionActive = false;
+                document.getElementById('mic-btn').classList.remove('animate-pulse');
+                setTimeout(unlockInput, 500);
+            };
+        }
+
+        function unlockInput() {
+            const input = document.getElementById('answer-input');
+            const submitBtn = document.getElementById('submit-btn');
+            const lockOverlay = document.getElementById('input-lock-overlay');
+            const micBtn = document.getElementById('mic-btn');
+
+            input.disabled = false;
+            input.classList.remove('bg-slate-50');
+            submitBtn.disabled = false;
+            lockOverlay.classList.add('hidden');
+            micBtn.classList.remove('mic-highlight');
+            input.focus();
+        }
+
+        function startGame(count) {
+            players = [];
+            for (let i = 0; i < count; i++) {
+                players.push({ 
+                    id: i, 
+                    name: playerNames[i], 
+                    score: 0, 
+                    correctAnswers: 0, 
+                    color: playerColours[i] 
+                });
+            }
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            initialiseGrid();
+            updatePlayerBoard();
+            startTimer();
+            startNewRound();
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById('timer-display');
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            display.innerText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            if (timeLeft <= 30) display.classList.add('timer-low');
+        }
+
+        function initialiseGrid() {
+            const gridContainer = document.getElementById('treasure-grid');
+            const rewardTypes = [
+                { icon: '🪙', min: 2, max: 10, label: 'Münzen' },   
+                { icon: '💰', min: 15, max: 35, label: 'Geldbeutel' }, 
+                { icon: '💍', min: 10, max: 15, label: 'Ring' }, 
+                { icon: '💎', min: 20, max: 30, label: 'Edelstein' }, 
+                { icon: '👑', min: 40, max: 60, label: 'Krone' }, 
+                { icon: '✨', min: 1, max: 5, label: 'Sternenstaub' },   
+                { icon: '🦴', min: -5, max: -2, label: 'Knochen' }, 
+                { icon: '💩', min: -8, max: -4, label: 'Mist' }, 
+                { icon: '❌', min: -15, max: -10, label: 'Gefahr' },
+                { icon: '👟', min: 0, max: 1, label: 'Alter Schuh' }, 
+                { icon: '🥫', min: 0, max: 1, label: 'Alte Dose' }    
+            ];
+
+            let tempRewards = [];
+            for(let i = 0; i < 10; i++) tempRewards.push({...rewardTypes[0]}); 
+            for(let i = 0; i < 6; i++) tempRewards.push({...rewardTypes[1]}); 
+            for(let i = 0; i < 3; i++) tempRewards.push({...rewardTypes[2]}); 
+            for(let i = 0; i < 2; i++) tempRewards.push({...rewardTypes[3]}); 
+            for(let i = 0; i < 1; i++) tempRewards.push({...rewardTypes[4]}); 
+            for(let i = 0; i < 4; i++) tempRewards.push({...rewardTypes[5]}); 
+            for(let i = 0; i < 3; i++) tempRewards.push({...rewardTypes[6]}); 
+            for(let i = 0; i < 2; i++) tempRewards.push({...rewardTypes[7]}); 
+            for(let i = 0; i < 2; i++) tempRewards.push({...rewardTypes[8]}); 
+            for(let i = 0; i < 5; i++) tempRewards.push({...rewardTypes[9]}); 
+            for(let i = 0; i < 5; i++) tempRewards.push({...rewardTypes[10]}); 
+
+            while(tempRewards.length < gridSize) {
+                tempRewards.push({ icon: '🕳️', min: 0, max: 0, label: 'Nichts' });
+            }
+            
+            gridData = tempRewards.sort(() => Math.random() - 0.5).map(item => {
+                const pts = Math.floor(Math.random() * (item.max - item.min + 1)) + item.min;
+                return { icon: item.icon, points: pts, label: item.label };
+            });
+            
+            gridContainer.innerHTML = '';
+            for (let i = 0; i < gridSize; i++) {
+                const tile = document.createElement('div');
+                tile.className = 'grid-tile bg-orange-200 border-2 border-orange-300 rounded-lg cursor-pointer h-14 md:h-16 flex items-center justify-center text-2xl md:text-3xl shadow-inner';
+                tile.id = `tile-${i}`;
+                tile.onclick = () => handleDig(i);
+                gridContainer.appendChild(tile);
+            }
+        }
+
+        function updatePlayerBoard() {
+            const board = document.getElementById('player-board');
+            board.innerHTML = players.map((p, idx) => `
+                <div class="p-4 rounded-xl border-2 transition-all ${idx === currentPlayerIndex ? `active-player bg-white shadow-lg border-${p.color}-500` : 'bg-slate-100 opacity-60 border-transparent'}">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-lg text-${p.color}-600">${p.name}</span>
+                        <span class="bg-${p.color}-500 text-white px-3 py-1 rounded-full text-sm font-bold shadow-sm">${p.score} Pkt.</span>
+                    </div>
+                    <div class="flex items-center text-xs text-slate-500 font-bold">
+                        <span class="mr-1">✅ Richtig gelöst:</span>
+                        <span class="text-${p.color}-600">${p.correctAnswers}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function startNewRound() {
+            canDig = false;
+            document.getElementById('continue-btn').classList.add('hidden');
+            
+            const input = document.getElementById('answer-input');
+            const submitBtn = document.getElementById('submit-btn');
+            const lockOverlay = document.getElementById('input-lock-overlay');
+            const micBtn = document.getElementById('mic-btn');
+
+            input.value = '';
+            input.disabled = true;
+            input.classList.add('bg-slate-50');
+            submitBtn.disabled = true;
+            lockOverlay.classList.remove('hidden');
+            micBtn.disabled = false;
+            micBtn.classList.add('mic-highlight');
+
+            document.getElementById('feedback-area').innerHTML = '<p class="text-slate-400 italic text-base">Nutze zuerst das Mikrofon!</p>';
+            document.getElementById('speech-status').innerText = "Bereit für deine Stimme...";
+            document.getElementById('grid-status-text').innerHTML = '<span class="text-2xl">📍</span> Warte auf Stimme...';
+            document.getElementById('dig-count').innerText = "";
+            
+            currentPair = sentencePairs[Math.floor(Math.random() * sentencePairs.length)];
+            document.getElementById('english-sentence').innerText = currentPair.en;
+            document.getElementById('jumbled-chunks').innerText = currentPair.jumbled;
+            updatePlayerBoard();
+        }
+
+        function startSpeech() {
+            if (!recognition || isRecognitionActive) return;
+            recognition.start();
+        }
+
+        function normalise(str) {
+            return str.toLowerCase()
+                .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "")
+                .replace(/\s+/g, " ")
+                .trim();
+        }
+
+        function checkAnswer() {
+            const inputVal = document.getElementById('answer-input').value;
+            const normInput = normalise(inputVal);
+            const normCorrect = normalise(currentPair.de);
+            
+            const isCorrect = (normInput === normCorrect);
+            const feedback = document.getElementById('feedback-area');
+            
+            document.getElementById('answer-input').disabled = true;
+            document.getElementById('submit-btn').disabled = true;
+            document.getElementById('mic-btn').disabled = true;
+
+            if (isCorrect) {
+                players[currentPlayerIndex].correctAnswers++;
+                updatePlayerBoard();
+                
+                feedback.innerHTML = `
+                    <div class="text-green-600 font-bold mb-2 text-xl">✅ RICHTIG!</div>
+                    <div class="text-slate-700 bg-green-50 p-3 rounded-lg border-2 border-green-200 w-full text-left">
+                        <p class="text-[10px] uppercase text-green-500 font-black mb-1">Deine Antwort:</p>
+                        <p class="font-bold text-base">${inputVal || "—"}</p>
+                    </div>
+                `;
+                canDig = true;
+                document.getElementById('grid-status-text').innerHTML = '<span class="text-2xl text-green-500">⛏️</span> Korrekt! Grabe jetzt!';
+                document.getElementById('dig-count').innerText = "👉 Klicke auf ein Feld im Raster!";
+            } else {
+                feedback.innerHTML = `
+                    <div class="text-red-600 font-bold mb-2 text-xl">❌ NICHT GANZ...</div>
+                    <div class="space-y-2 text-left w-full">
+                        <div class="bg-red-50 p-2 rounded border border-red-100">
+                            <p class="text-[9px] uppercase text-red-400 font-black">Deine Eingabe:</p>
+                            <p class="text-sm italic text-slate-600">${inputVal || "(leer)"}</p>
+                        </div>
+                        <div class="bg-blue-50 p-2 rounded border border-blue-100">
+                            <p class="text-[9px] uppercase text-blue-500 font-black">Richtige Lösung:</p>
+                            <p class="text-sm font-bold text-slate-800">${currentPair.de}</p>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('continue-btn').classList.remove('hidden');
+                document.getElementById('grid-status-text').innerHTML = '<span class="text-2xl">👎</span> Leider falsch.';
+            }
+        }
+
+        function handleDig(index) {
+            if (!canDig) return;
+            const tile = document.getElementById(`tile-${index}`);
+            if (tile.classList.contains('revealed')) return;
+
+            const content = gridData[index];
+            tile.classList.add('revealed');
+            tile.classList.remove('bg-orange-200', 'cursor-pointer');
+            tile.classList.add('bg-white', 'treasure-reveal', 'border-slate-100');
+            
+            tile.innerText = content.icon;
+            players[currentPlayerIndex].score += content.points;
+            updatePlayerBoard();
+            
+            canDig = false;
+            let resultText = "";
+            if (content.icon === '🕳️') {
+                resultText = "Nichts gefunden...";
+            } else if (content.points > 0) {
+                resultText = `${content.label}: +${content.points} Punkte!`;
+            } else if (content.points < 0) {
+                resultText = `${content.label}: ${content.points} Punkte!`;
+            } else {
+                resultText = `${content.label}: 0 Punkte.`;
+            }
+            
+            document.getElementById('dig-count').innerText = resultText;
+            document.getElementById('continue-btn').classList.remove('hidden');
+
+            if (isGridFull()) endGame();
+        }
+
+        function nextTurn() {
+            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            startNewRound();
+        }
+
+        function isGridFull() {
+            return document.querySelectorAll('.grid-tile:not(.revealed)').length === 0;
+        }
+
+        function endGame() {
+            if (timerInterval) clearInterval(timerInterval);
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('finish-screen').classList.remove('hidden');
+            const ranking = [...players].sort((a, b) => b.score - a.score);
+            const rankingList = document.getElementById('final-ranking');
+            rankingList.innerHTML = ranking.map((p, i) => `
+                <div class="flex items-center justify-between bg-white p-6 rounded-2xl border-4 border-${p.color}-500 shadow-xl">
+                    <div class="flex flex-col">
+                        <span class="text-3xl font-bold">${i + 1}. ${p.name}</span>
+                        <span class="text-sm text-slate-500 font-bold">✅ ${p.correctAnswers} Sätze richtig</span>
+                    </div>
+                    <span class="text-2xl font-bold text-green-600">${p.score} Punkte</span>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
